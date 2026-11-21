@@ -20,7 +20,7 @@ import {
   ExternalLink,
   Sparkles,
 } from 'lucide-react';
-import { auth, googleProvider } from '../lib/firebase';
+import { auth, firebaseProjectId, googleProvider } from '../lib/firebase';
 import { ShriShyamLogo } from './ShriShyamLogo';
 import { PWAInstallButton } from './PWAInstallButton';
 
@@ -60,12 +60,14 @@ export const AuthGate: React.FC<AuthGateProps> = ({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [popupBlocked, setPopupBlocked] = useState(false);
+  const [unauthorizedHost, setUnauthorizedHost] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
   const handleGoogleAuth = async (intent: 'signin' | 'signup') => {
     setErrorMsg(null);
     setInfoMsg(null);
     setPopupBlocked(false);
+    setUnauthorizedHost(null);
     setLoading(true);
     try {
       const result = await signInWithPopup(auth, googleProvider);
@@ -88,8 +90,9 @@ export const AuthGate: React.FC<AuthGateProps> = ({
         setErrorMsg('A Google sign-in window is already open. Please finish signing in or retry.');
       } else if (code === 'auth/unauthorized-domain') {
         const host = typeof window !== 'undefined' ? window.location.hostname : 'this domain';
+        setUnauthorizedHost(host);
         setErrorMsg(
-          `Google Sign-In is not authorized for "${host}". Please add this domain under Firebase Console → Authentication → Settings → Authorized domains.`
+          `Domain "${host}" is not yet authorized in Firebase Project "${firebaseProjectId}". Add "${host}" under Firebase Console → Authentication → Settings → Authorized domains, then hard-refresh this page.`
         );
       } else if (code === 'auth/operation-not-allowed') {
         setErrorMsg(
@@ -382,6 +385,31 @@ export const AuthGate: React.FC<AuthGateProps> = ({
                   <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                   <span>{errorMsg}</span>
                 </div>
+                {unauthorizedHost && (
+                  <div className="p-2.5 rounded-lg bg-white border border-rose-200 space-y-1.5 text-[11px] text-stone-700">
+                    <div>
+                      <strong>Project ID:</strong>{' '}
+                      <code className="px-1.5 py-0.5 rounded bg-stone-100 text-stone-900 font-mono">
+                        {firebaseProjectId}
+                      </code>
+                    </div>
+                    <div>
+                      <strong>Domain to Add:</strong>{' '}
+                      <code className="px-1.5 py-0.5 rounded bg-stone-100 text-stone-900 font-mono">
+                        {unauthorizedHost}
+                      </code>
+                    </div>
+                    <a
+                      href={`https://console.firebase.google.com/project/${firebaseProjectId}/authentication/settings`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white font-bold transition-colors mt-1"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Open Firebase Authorized Domains</span>
+                    </a>
+                  </div>
+                )}
                 {popupBlocked && typeof window !== 'undefined' && (
                   <a
                     href={window.location.href}
