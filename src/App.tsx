@@ -45,6 +45,7 @@ import {
   Globe,
   Lock,
   Database,
+  AlertCircle,
 } from 'lucide-react';
 
 const INITIAL_DEMO_INTERVIEWS: InterviewSchedule[] = [
@@ -101,6 +102,8 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [syncingWorkspace, setSyncingWorkspace] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [workspaceRetryTick, setWorkspaceRetryTick] = useState(0);
 
   const [activeTab, setActiveTab] = useState<TabType>('resdex');
   const [openCreateJobSignal, setOpenCreateJobSignal] = useState(0);
@@ -143,6 +146,7 @@ export default function App() {
 
     async function initEncryptedWorkspace(currentUser: User) {
       setSyncingWorkspace(true);
+      setWorkspaceError(null);
       try {
         await ensureUserWorkspace(currentUser);
         await seedInitialWorkspaceIfEmpty(
@@ -169,6 +173,15 @@ export default function App() {
         unsubApps = subscribeApplications(currentUser.uid, (list) => {
           setApplications(list);
         });
+      } catch (err) {
+        console.error('Workspace initialization failed:', err);
+        if (active) {
+          setWorkspaceError(
+            err instanceof Error
+              ? 'Could not sync your Google workspace with Firestore. Check your connection and retry.'
+              : 'Could not sync your Google workspace with Firestore.'
+          );
+        }
       } finally {
         if (active) setSyncingWorkspace(false);
       }
@@ -183,7 +196,7 @@ export default function App() {
       unsubInts?.();
       unsubApps?.();
     };
-  }, [authReady, user, user?.emailVerified]);
+  }, [authReady, user, user?.emailVerified, workspaceRetryTick]);
 
   if (publicApplyParams) {
     return (
@@ -205,12 +218,23 @@ export default function App() {
 
   const handleSignOut = async () => {
     await signOut(auth);
+    syncedPublicJobsRef.current = false;
+    setWorkspaceError(null);
+    setSelectedCandidateForCall(null);
+    setPrefilledInterviewCandidate(null);
+    setActiveModalCandidate(null);
+    setCandidates(INITIAL_CANDIDATES.map(enrichCandidate));
+    setJobPostings(INITIAL_JOB_POSTINGS.map(enrichJobPosting));
+    setInterviews(INITIAL_DEMO_INTERVIEWS);
+    setApplications([]);
   };
 
   const handleRefreshVerification = async () => {
     if (auth.currentUser) {
       await auth.currentUser.reload();
-      setUser({ ...auth.currentUser });
+      await auth.currentUser.getIdToken(true);
+      setUser(auth.currentUser);
+      setWorkspaceRetryTick((t) => t + 1);
     }
   };
 
@@ -505,6 +529,7 @@ export default function App() {
         callingQueueCount={candidates.filter((c) => c.status === 'sourced').length}
         userEmail={user.email}
         userName={user.displayName}
+        userPhotoUrl={user.photoURL}
         onSignOut={handleSignOut}
       />
 
@@ -514,6 +539,22 @@ export default function App() {
           <div className="px-3.5 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-medium flex items-center gap-2">
             <Lock className="w-3.5 h-3.5 text-emerald-700 animate-pulse" />
             <span>Decrypting &amp; syncing your Shri Shyam Consulting cloud vault...</span>
+          </div>
+        )}
+
+        {workspaceError && (
+          <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{workspaceError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setWorkspaceRetryTick((t) => t + 1)}
+              className="px-3 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white font-bold cursor-pointer"
+            >
+              Retry Sync
+            </button>
           </div>
         )}
 

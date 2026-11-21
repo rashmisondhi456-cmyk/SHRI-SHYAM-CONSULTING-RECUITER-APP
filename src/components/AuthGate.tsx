@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import {
-  createUserWithEmailAndPassword,
+  getAdditionalUserInfo,
   sendEmailVerification,
-  signInWithEmailAndPassword,
   signInWithPopup,
-  updateProfile,
   User,
 } from 'firebase/auth';
 import {
@@ -12,15 +10,15 @@ import {
   ShieldCheck,
   Globe,
   Mail,
-  KeyRound,
   UserPlus,
   LogIn,
-  ArrowRight,
   AlertCircle,
   CheckCircle2,
   MapPin,
   Phone,
   RefreshCw,
+  ExternalLink,
+  Sparkles,
 } from 'lucide-react';
 import { auth, googleProvider } from '../lib/firebase';
 import { ShriShyamLogo } from './ShriShyamLogo';
@@ -32,82 +30,82 @@ interface AuthGateProps {
   onSignOut?: () => Promise<void>;
 }
 
+const GoogleIcon: React.FC<{ className?: string }> = ({ className = 'w-5 h-5' }) => (
+  <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      fill="#4285F4"
+      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+    />
+    <path
+      fill="#34A853"
+      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+    />
+    <path
+      fill="#FBBC05"
+      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+    />
+    <path
+      fill="#EA4335"
+      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+    />
+  </svg>
+);
+
 export const AuthGate: React.FC<AuthGateProps> = ({
   unverifiedUser,
   onRefreshVerification,
   onSignOut,
 }) => {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [popupBlocked, setPopupBlocked] = useState(false);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
-  const handleGoogleAuth = async () => {
+  const handleGoogleAuth = async (intent: 'signin' | 'signup') => {
     setErrorMsg(null);
     setInfoMsg(null);
+    setPopupBlocked(false);
     setLoading(true);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      const extra = getAdditionalUserInfo(result);
+      if (extra?.isNewUser) {
+        setInfoMsg('Google account connected! Creating your encrypted Shri Shyam Consulting workspace...');
+      } else if (intent === 'signup') {
+        setInfoMsg('This Google account is already registered — signing you in now...');
+      }
     } catch (err: any) {
       const code = err?.code || '';
       if (code === 'auth/popup-blocked') {
-        setErrorMsg('Popup was blocked by the browser. Please allow popups or open in a new tab.');
-      } else if (code === 'auth/popup-closed-by-user') {
-        setErrorMsg('Google sign-in popup was closed before completing authentication.');
-      } else {
-        setErrorMsg(err?.message || 'Google authentication failed.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEmailAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
-    setInfoMsg(null);
-    setLoading(true);
-
-    try {
-      if (mode === 'signup') {
-        if (!fullName.trim()) {
-          setErrorMsg('Please enter your full name to create an account.');
-          setLoading(false);
-          return;
-        }
-        const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
-        await updateProfile(cred.user, { displayName: fullName.trim() });
-        await sendEmailVerification(cred.user);
-        setInfoMsg(
-          'Account created! A verification email has been sent. Please verify your email or use Google Sign-In for instant access.'
-        );
-      } else {
-        await signInWithEmailAndPassword(auth, email.trim(), password);
-      }
-    } catch (err: any) {
-      const code = err?.code || '';
-      if (code === 'auth/operation-not-allowed') {
+        setPopupBlocked(true);
         setErrorMsg(
-          'Email/Password sign-up is not yet enabled in Firebase Console (Authentication → Sign-in method → Email/Password). Please use "Continue with Google" below for instant verified access, or enable Email/Password in Firebase Console.'
+          'Browser popup was blocked. Please allow popups for this site or open the app in a full browser tab to complete Google Sign-In.'
         );
-      } else if (code === 'auth/email-already-in-use') {
-        setErrorMsg('This email is already registered. Switch to Sign In or continue with Google.');
-      } else if (code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
-        setErrorMsg('Invalid email or password. Try again or use Google Sign-In.');
-      } else if (code === 'auth/weak-password') {
-        setErrorMsg('Password must be at least 6 characters.');
+      } else if (code === 'auth/popup-closed-by-user') {
+        setErrorMsg('Google sign-in popup was closed before completing authentication. Please try again.');
+      } else if (code === 'auth/cancelled-popup-request') {
+        setErrorMsg('A Google sign-in window is already open. Please finish signing in or retry.');
+      } else if (code === 'auth/unauthorized-domain') {
+        const host = typeof window !== 'undefined' ? window.location.hostname : 'this domain';
+        setErrorMsg(
+          `Google Sign-In is not authorized for "${host}". Please add this domain under Firebase Console → Authentication → Settings → Authorized domains.`
+        );
+      } else if (code === 'auth/operation-not-allowed') {
+        setErrorMsg(
+          'Google Sign-In is not enabled in Firebase Authentication. Enable the Google provider in Firebase Console → Authentication → Sign-in method.'
+        );
+      } else if (code === 'auth/network-request-failed') {
+        setErrorMsg('Network error while connecting to Google. Please check your internet connection and retry.');
       } else {
-        setErrorMsg(err?.message || 'Authentication failed.');
+        setErrorMsg(err?.message || 'Google authentication failed. Please try again.');
       }
     } finally {
       setLoading(false);
     }
   };
 
-  // Unverified email holding screen
+  // Unverified email holding screen (edge case if Google Workspace account reports unverified email)
   if (unverifiedUser) {
     return (
       <div className="min-h-screen bg-stone-50 flex flex-col justify-center items-center p-4">
@@ -119,8 +117,8 @@ export const AuthGate: React.FC<AuthGateProps> = ({
               <span>Email Verification Required</span>
             </div>
             <p className="text-xs text-stone-700 leading-relaxed">
-              Your workspace is protected by zero-trust Firestore encryption. Please click the verification link sent to{' '}
-              <strong className="text-stone-900">{unverifiedUser.email}</strong>, then tap refresh below.
+              Your workspace is protected by zero-trust Firestore security rules. Please verify{' '}
+              <strong className="text-stone-900">{unverifiedUser.email}</strong> or sign in with a verified Google account.
             </p>
           </div>
 
@@ -137,18 +135,18 @@ export const AuthGate: React.FC<AuthGateProps> = ({
               type="button"
               onClick={async () => {
                 await sendEmailVerification(unverifiedUser);
-                setInfoMsg('Verification email resent!');
+                setInfoMsg('Verification email sent!');
               }}
               className="w-full py-2 px-4 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-xl text-xs font-semibold cursor-pointer"
             >
-              Resend Verification Email
+              Send Verification Email
             </button>
             <button
               type="button"
               onClick={onSignOut}
-              className="w-full py-2 px-4 text-stone-500 hover:text-stone-800 text-xs font-medium cursor-pointer"
+              className="w-full py-2 px-4 text-stone-600 hover:text-stone-900 text-xs font-medium cursor-pointer"
             >
-              Switch Account / Sign Out
+              Switch Google Account / Sign Out
             </button>
           </div>
 
@@ -197,7 +195,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({
         </div>
       </div>
 
-      {/* Main Auth Container */}
+      {/* Main Google Auth Container */}
       <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
         <div className="max-w-4xl w-full grid grid-cols-1 lg:grid-cols-12 bg-white rounded-2xl border border-stone-200 shadow-xl overflow-hidden">
           {/* Left Branding & Encryption Panel */}
@@ -205,7 +203,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({
             <div className="space-y-4">
               <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-900/80 border border-amber-400/40 text-amber-300 text-[11px] font-bold">
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>End-to-End Encrypted ATS Vault</span>
+                <span>Google Verified ATS Vault</span>
               </div>
 
               <h1
@@ -244,22 +242,22 @@ export const AuthGate: React.FC<AuthGateProps> = ({
             </div>
           </div>
 
-          {/* Right Sign In / Sign Up Panel */}
-          <div className="lg:col-span-7 p-6 sm:p-8 space-y-5">
-            {/* Mode Switcher */}
-            <div className="flex items-center justify-between border-b border-stone-200 pb-3">
-              <div>
-                <h2 className="text-lg font-bold text-stone-900">
-                  {mode === 'signin' ? 'Sign In to Encrypted Workspace' : 'Create Recruiter Account'}
-                </h2>
-                <p className="text-xs text-stone-500 mt-0.5">
-                  {mode === 'signin'
-                    ? 'Authenticate with Google or email to decrypt your recruitment pipeline.'
-                    : 'Sign up with Google for instant verified access or register with email.'}
-                </p>
-              </div>
+          {/* Right Google Sign In / Sign Up Panel */}
+          <div className="lg:col-span-7 p-6 sm:p-8 flex flex-col justify-center space-y-5">
+            <div className="border-b border-stone-200 pb-3">
+              <h2 className="text-lg font-bold text-stone-900">
+                {mode === 'signin'
+                  ? 'Sign In with Google'
+                  : 'Sign Up with Google'}
+              </h2>
+              <p className="text-xs text-stone-500 mt-0.5">
+                {mode === 'signin'
+                  ? 'Sign in with your Google account to unlock your encrypted Shri Shyam Consulting workspace.'
+                  : 'Create your verified recruiter account in one click using Google — no separate password needed.'}
+              </p>
             </div>
 
+            {/* Mode Switcher: Sign In vs Sign Up */}
             <div className="grid grid-cols-2 gap-1.5 bg-stone-100 p-1 rounded-xl">
               <button
                 type="button"
@@ -268,15 +266,16 @@ export const AuthGate: React.FC<AuthGateProps> = ({
                   setMode('signin');
                   setErrorMsg(null);
                   setInfoMsg(null);
+                  setPopupBlocked(false);
                 }}
-                className={`py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                className={`py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
                   mode === 'signin'
                     ? 'bg-white text-emerald-900 shadow-xs'
                     : 'text-stone-600 hover:text-stone-900'
                 }`}
               >
                 <LogIn className="w-3.5 h-3.5" />
-                <span>Sign In</span>
+                <span>Sign In (Login)</span>
               </button>
               <button
                 type="button"
@@ -285,61 +284,115 @@ export const AuthGate: React.FC<AuthGateProps> = ({
                   setMode('signup');
                   setErrorMsg(null);
                   setInfoMsg(null);
+                  setPopupBlocked(false);
                 }}
-                className={`py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                className={`py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
                   mode === 'signup'
                     ? 'bg-white text-emerald-900 shadow-xs'
                     : 'text-stone-600 hover:text-stone-900'
                 }`}
               >
                 <UserPlus className="w-3.5 h-3.5" />
-                <span>Sign Up</span>
+                <span>Sign Up (New Account)</span>
               </button>
             </div>
 
-            {/* Primary Google Sign-In / Sign-Up Button */}
+            {/* Workspace Onboarding Card */}
+            <div className="rounded-xl bg-stone-50 border border-stone-200 p-4 space-y-2.5">
+              <div className="flex items-center gap-2 text-xs font-bold text-stone-800">
+                <Sparkles className="w-4 h-4 text-emerald-700" />
+                <span>
+                  {mode === 'signin'
+                    ? 'Instant Encrypted Google Access'
+                    : 'What happens when you Sign Up with Google'}
+                </span>
+              </div>
+              <ul className="space-y-1.5 text-xs text-stone-600">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                  <span>Choose any Gmail or Google Workspace account in the popup</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                  <span>Automatic email verification &amp; personal Firestore database provisioning</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                  <span>Access Resdex Search, Job Postings, Excel Sheet &amp; AI Calling Agent</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Primary Google Action Button */}
             <button
               id="btn-google-auth"
               type="button"
               disabled={loading}
-              onClick={handleGoogleAuth}
-              className="w-full py-3 px-4 bg-white hover:bg-stone-50 border-2 border-stone-300 hover:border-emerald-700 rounded-xl text-sm font-bold text-stone-900 flex items-center justify-center gap-3 shadow-xs cursor-pointer transition-all disabled:opacity-60"
+              onClick={() => handleGoogleAuth(mode)}
+              className="w-full py-3.5 px-5 bg-emerald-900 hover:bg-emerald-950 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-3 shadow-sm cursor-pointer transition-all disabled:opacity-60"
             >
-              <svg className="w-5 h-5" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                />
-              </svg>
+              <span className="bg-white rounded-full p-1 flex items-center justify-center">
+                <GoogleIcon className="w-4 h-4" />
+              </span>
               <span>
-                {mode === 'signin' ? 'Sign In with Google' : 'Sign Up with Google'}
+                {loading
+                  ? 'Connecting to Google...'
+                  : mode === 'signin'
+                  ? 'Sign In with Google'
+                  : 'Sign Up with Google'}
               </span>
             </button>
 
-            <div className="relative flex items-center justify-center">
-              <div className="border-t border-stone-200 w-full"></div>
-              <span className="bg-white px-3 text-[11px] font-semibold text-stone-400 uppercase tracking-wider whitespace-nowrap">
-                or use corporate email
-              </span>
-              <div className="border-t border-stone-200 w-full"></div>
+            {/* Quick Secondary Switch Link */}
+            <div className="text-center text-xs text-stone-500">
+              {mode === 'signin' ? (
+                <span>
+                  New to Shri Shyam Consulting?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('signup');
+                      setErrorMsg(null);
+                    }}
+                    className="font-bold text-emerald-800 hover:underline cursor-pointer"
+                  >
+                    Create account with Google
+                  </button>
+                </span>
+              ) : (
+                <span>
+                  Already have a Google workspace?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('signin');
+                      setErrorMsg(null);
+                    }}
+                    className="font-bold text-emerald-800 hover:underline cursor-pointer"
+                  >
+                    Sign In with Google
+                  </button>
+                </span>
+              )}
             </div>
 
             {errorMsg && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                <span>{errorMsg}</span>
+              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs space-y-2">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span>{errorMsg}</span>
+                </div>
+                {popupBlocked && typeof window !== 'undefined' && (
+                  <a
+                    href={window.location.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-rose-300 text-rose-900 font-bold hover:bg-rose-100 transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open App in New Tab</span>
+                  </a>
+                )}
               </div>
             )}
 
@@ -349,68 +402,6 @@ export const AuthGate: React.FC<AuthGateProps> = ({
                 <span>{infoMsg}</span>
               </div>
             )}
-
-            <form onSubmit={handleEmailAuth} className="space-y-3 text-xs">
-              {mode === 'signup' && (
-                <div>
-                  <label className="block font-semibold text-stone-700 mb-1">Full Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="e.g. Rashmi Sondhi"
-                    className="w-full px-3 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-700/30"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block font-semibold text-stone-700 mb-1">Email Address</label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="info@shrishyamconsulting.in"
-                    className="w-full pl-9 pr-3 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-700/30"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-stone-700 mb-1">Password</label>
-                <div className="relative">
-                  <KeyRound className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="password"
-                    required
-                    minLength={6}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Minimum 6 characters"
-                    className="w-full pl-9 pr-3 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-700/30"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-2.5 px-4 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm cursor-pointer transition-colors disabled:opacity-60"
-              >
-                <span>
-                  {loading
-                    ? 'Encrypting Session...'
-                    : mode === 'signin'
-                    ? 'Sign In with Email'
-                    : 'Sign Up with Email'}
-                </span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </form>
           </div>
         </div>
       </main>

@@ -26,6 +26,7 @@ interface HeaderProps {
   callingQueueCount: number;
   userEmail?: string | null;
   userName?: string | null;
+  userPhotoUrl?: string | null;
   onSignOut?: () => void;
 }
 
@@ -37,6 +38,7 @@ export const Header: React.FC<HeaderProps> = ({
   callingQueueCount,
   userEmail,
   userName,
+  userPhotoUrl,
   onSignOut,
 }) => {
   return (
@@ -85,6 +87,18 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
             {userEmail && (
               <div className="flex items-center gap-2 pl-2 border-l border-stone-700">
+                {userPhotoUrl ? (
+                  <img
+                    src={userPhotoUrl}
+                    alt={userName || userEmail}
+                    referrerPolicy="no-referrer"
+                    className="w-5 h-5 rounded-full border border-emerald-500/60 object-cover"
+                  />
+                ) : (
+                  <span className="w-5 h-5 rounded-full bg-emerald-800 text-amber-300 text-[10px] font-bold flex items-center justify-center">
+                    {(userName || userEmail).charAt(0).toUpperCase()}
+                  </span>
+                )}
                 <span className="text-[11px] text-stone-300 hidden md:inline truncate max-w-[160px]" title={userEmail}>
                   {userName || userEmail}
                 </span>
@@ -94,7 +108,7 @@ export const Header: React.FC<HeaderProps> = ({
                     type="button"
                     onClick={onSignOut}
                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 text-[11px] font-semibold cursor-pointer transition-colors"
-                    title="Sign out and lock encrypted workspace"
+                    title="Sign out and switch Google account"
                   >
                     <LogOut className="w-3 h-3 text-rose-400" />
                     <span>Sign Out</span>
